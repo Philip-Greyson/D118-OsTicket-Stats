@@ -1,1 +1,3 @@
 **/*.png
+**/*.pdf
+oauth2_creds.json
