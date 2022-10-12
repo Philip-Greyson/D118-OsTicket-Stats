@@ -13,11 +13,12 @@
 
 # Get last x days of tickets, plot average close time by agent and overall in district
 
+# For single agent, look at average ticket closing time per month/week/etc
+
 # ---- TO-DO -----
 # Get the last fiscal year (july 1), plot how many open/closed per week? have to use relative time delta for week additions, and use the weekday function to find the mondays https://dateutil.readthedocs.io/en/stable/relativedelta.html
 # Get the breakdown of student/parent/staff tickets in last month?
 
-# For single agent, look at average ticket closing time per month/week/etc
 # For single agent, look at average first response time per month/week/etc
 
 # Save all plots to files
@@ -25,7 +26,6 @@
 
 
 # Module Imports
-from audioop import avg
 import numpy as np
 import matplotlib.pyplot as plt
 import mariadb # needed to connect to OsTicket database
@@ -275,15 +275,15 @@ def closeTimePerAgentByDays(amount):
             for ID in agents.copy(): # go through the keys (ids) in a copy of the agents dict, so we can make changes to the original one at the same time
                 agentCloseTimes = [] # empty list to sotre all the individual close times in before averaging them
                 # print(ID) # debug
-                cur.execute("SELECT ost_ticket.created, ost_ticket.closed, ost_staff.firstname FROM ost_ticket INNER JOIN ost_staff ON ost_ticket.staff_id = ost_staff.staff_id WHERE ost_ticket.staff_id = " + ID + " AND ost_ticket.created >= '" + targetStart + "'")
+                cur.execute("SELECT created, closed FROM ost_ticket WHERE staff_id = " + ID + " AND created >= '" + targetStart + "'")
                 results = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
                 if results and (len(results) > 4): # we want to skip any user who only have 4 or fewer tickets in the time period as they might skew things
                     for entry in results:
                         # print(entry) # debug
                         if entry[1]: # if there is a close time
-                            closeTime = entry[1] - entry[0]
-                            agentCloseTimes.append(closeTime) # put the close time in the per-agent list
-                            allCloseTimeDeltas.append(closeTime) # put the close time in the overall district list
+                            closeTimeDelta = entry[1] - entry[0]
+                            agentCloseTimes.append(closeTimeDelta) # put the close time in the per-agent list
+                            allCloseTimeDeltas.append(closeTimeDelta) # put the close time in the overall district list
                             # print(closeTime)
                     if len(agentCloseTimes) != 0: # we want to ignore any agents without any actual close times (they had tickets but did not close them)
                         # print(allCloseTimes)
@@ -307,15 +307,14 @@ def closeTimePerAgentByDays(amount):
     avgCloseTimeDeltas.append(totalAvgCloseTime) # add the overall average to the end of the per-agent deltas list
     
 
-     # convert the time detlas to hours so we can graph them
+    # convert the time detlas to hours so we can graph them
     for delta in avgCloseTimeDeltas:
         hours = (delta.days * 24) + delta.seconds / 3600
         avgCloseTimeHours.append(hours)
 
-    print(names)
-    print(avgCloseTimeDeltas)
-    print(avgCloseTimeHours)
-    
+    # print(names)
+    # print(avgCloseTimeDeltas)
+    # print(avgCloseTimeHours)
 
     # Make the plot
     plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
@@ -326,6 +325,128 @@ def closeTimePerAgentByDays(amount):
     # plt.xticks(names, rotation='vertical') # set the printing of the x-axis labels to be vertical so we can actually read them
     plt.grid(axis='y') # only show the horizontal lines on the grid
     plt.show()
+
+def individualCloseTimesPerMonth(amount):
+    #get list of agents
+    #for each agent, get all tickets in last x months
+
+    agents = {} # create dictionary for ids, names
+    months = [] # list for month mm/yy
+    dates = [] # list to hold the dates for each month
+    allCloseTimeDeltas = [] # list for the total close time deltas across the district
+    avgClo = []
+    
+
+    today = datetime.now()  # get todays date and store it for finding the correct term late
+    thisMonthsStart = today.strftime('%Y%m01') # set the date back to the first of the month
+    thisMonthsStart = datetime.strptime(thisMonthsStart, '%Y%m%d') # convert that string back to an actual datetime object
+
+    dates.insert(0, thisMonthsStart) # put our first date in the first value of the dates list
+    for i in range(amount-1): # loop through the number of months we have minues one since we have handled the first date
+        dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
+
+    for month in dates: # go through all our dates and convert them to the month strings for final plotting
+        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+    print(months)
+
+    dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
+    # print(dates) # debug
+
+    # Connect to MariaDB Platform
+    with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
+        with con.cursor() as cur:  # start an entry cursor
+            cur.execute('SELECT staff_id, firstname FROM ost_staff WHERE isactive = 1') # just get all staff_id for active agents, store them in another list
+            for agent in cur:
+                if not agent[0] in agents: # if they dont exist in the dict then we want to add them to it
+                    agents[str(agent[0])] = str(agent[1]) # append the id, name pair to the agent dictionary
+            for ID in agents.copy(): # go through the keys (ids) in a copy of the agents dict, so we can make changes to the original one at the same time
+                cur.execute('SELECT ticket_id FROM ost_ticket WHERE staff_id = ' + ID)
+                tickets = cur.fetchall()
+                if len(tickets) > 10: # ignore agents with less than 10 total tickets all time, as they probably have skewed results
+                    agentAvgCloseTimeDeltas = []
+                    agentAvgCloseTimeHours = [] # list for the average close time hours for each month
+
+                    totalAvgCloseTimeDeltas = []
+                    totalAvgCloseTimeHours = []
+
+                    print(agents[ID]) # debug
+                    for i in range(amount): # go through each month
+                        agentMonthlyCloseDeltas = []
+                        totalMonthlyCloseDeltas = []
+
+                        # Do the agent (individual) results for each month
+                        cur.execute("SELECT created, closed FROM ost_ticket WHERE staff_id = " + ID + " AND created >= '" + dates[i].strftime('%Y%m%d') + "' AND created <= '" + dates[i+1].strftime('%Y%m%d') + "'")
+                        agentResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
+                        print(agents[ID] + ': Month ' + str(i+1) + ': ' + str(len(agentResults)) + ' tickets')
+                        if agentResults: # need to make sure there is at least one ticket to do the math on or we get errors
+                            for entry in agentResults:
+                                # print(entry)
+                                if entry[1]: # if there is a close time
+                                    closeTimeDelta = entry[1] - entry[0]
+                                    agentMonthlyCloseDeltas.append(closeTimeDelta)
+                            avgMonthlyCloseTime = sum(agentMonthlyCloseDeltas, timedelta(0)) / len(agentMonthlyCloseDeltas) # get the average by adding up all the time deltas and dividing by instances
+                        else:
+                            # print('Ignoring month due to low ticket count')
+                            avgMonthlyCloseTime = np.nan # set the avg time to null so we skip over that point on the graph
+                        print(agents[ID] + ' Average Close Time: ' + str(avgMonthlyCloseTime))
+                        agentAvgCloseTimeDeltas.append(avgMonthlyCloseTime)
+
+                        # Now do basically the same but for the overall district
+                        cur.execute("SELECT created, closed FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created <= '" + dates[i+1].strftime('%Y%m%d') + "'")
+                        totalResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
+                        print('Total: Month ' + str(i+1) + ': ' + str(len(totalResults)) + ' tickets')
+                        if totalResults: # need to make sure there is at least one ticket to do the math on or we get errors
+                            for entry in totalResults:
+                                # print(entry)
+                                if entry[1]: # if there is a close time
+                                    closeTimeDelta = entry[1] - entry[0]
+                                    totalMonthlyCloseDeltas.append(closeTimeDelta)
+                            avgMonthlyCloseTime = sum(totalMonthlyCloseDeltas, timedelta(0)) / len(totalMonthlyCloseDeltas) # get the average by adding up all the time deltas and dividing by instances
+                        else:
+                            # print('Ignoring month due to low ticket count')
+                            avgMonthlyCloseTime = np.nan # set the avg time to null so we skip over that point on the graph
+                        print('Total Average Close Time: ' + str(avgMonthlyCloseTime))
+                        totalAvgCloseTimeDeltas.append(avgMonthlyCloseTime)
+
+                    # print(agentAvgCloseTimeDeltas) # debug
+                    # print(totalAvgCloseTimeDeltas) # debug
+                    print(months)
+
+                    # convert the time detlas to hours so we can graph them
+                    for delta in agentAvgCloseTimeDeltas:
+                        if isinstance(delta, timedelta): # if there is a valid time delta we convert it to hours, otherwise just keep the np.nan
+                            hours = (delta.days * 24) + delta.seconds / 3600
+                            agentAvgCloseTimeHours.append(hours)
+                        else:
+                            agentAvgCloseTimeHours.append(np.nan)
+                    print(agentAvgCloseTimeHours)
+
+                    # convert the total time deltas to hours as well
+                    for delta in totalAvgCloseTimeDeltas:
+                        if isinstance(delta, timedelta): # if there is a valid time delta we convert it to hours, otherwise just keep the np.nan
+                            hours = (delta.days * 24) + delta.seconds / 3600
+                            totalAvgCloseTimeHours.append(hours)
+                        else:
+                            totalAvgCloseTimeHours.append(np.nan)
+                    print(totalAvgCloseTimeHours)
+
+                    # Make the plot
+                    plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
+                    plt.title('Average Close Time for ' + agents[ID] + ' in the last ' + str(amount) + ' Months')
+                    plt.plot(months, agentAvgCloseTimeHours, 'bo', linewidth=.5, linestyle='--', label=agents[ID])
+                    plt.plot(months, totalAvgCloseTimeHours, 'gx', label="District Average")
+                    # Label the points https://queirozf.com/entries/add-labels-and-text-to-matplotlib-plots-annotation-examples
+                    for x,y in zip(months, agentAvgCloseTimeHours):
+                        if not np.isnan(y):
+                            label = int(y)
+                        plt.annotate(label, (x,y), textcoords='offset points', xytext=(10,6), ha='center', color='blue')
+
+                    plt.ylabel('Avg. Hours to Close')
+                    plt.xlabel('Month')
+                    plt.grid(True)
+                    plt.legend() # show the legend
+                    plt.savefig(agents[ID] + 'CloseTimePerMonth.png')
+                    plt.show()
 
 
 # ticketsByCategory(14, 'Staff') # get the amount of tickets per category from staff for the last 2 weeks
@@ -339,5 +460,6 @@ def closeTimePerAgentByDays(amount):
 # overallTicketsByDay(14) # get the overall ticket opened/closed stats for the last 2 weeks by day
 # overallTicketsByDay(30) # get the overall ticket opened/closed stats for the last month by day
 # overallTicketsByMonth(18) # get the overall ticket opened/closed stats for the 18 months by month
-closeTimePerAgentByDays(14)
-closeTimePerAgentByDays(90)
+# closeTimePerAgentByDays(14) # get average close time for the last 2 weeks
+# closeTimePerAgentByDays(90) # get average close time for last 3 months
+individualCloseTimesPerMonth(12)
