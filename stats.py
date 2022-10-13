@@ -11,7 +11,8 @@
 # Get the last x days of tickets, plot how many open and closed per day
 # Get the last x months of tickets, plot how many open/closed per month
 
-# Get last x days of tickets, plot average close time by agent and overall in district
+# Get last x months of tickets, plot average close time by agent and overall in district
+# Get last x months of tickets, plot average first response by agent and overall in district
 
 # For single agent, look at average ticket closing time per month/week/etc
 
@@ -24,7 +25,7 @@
 # Get the last fiscal year (july 1), plot how many open/closed per week? have to use relative time delta for week additions, and use the weekday function to find the mondays https://dateutil.readthedocs.io/en/stable/relativedelta.html
 # Get the breakdown of student/parent/staff tickets in last month?
 
-# For single agent, look at average first response time per month/week/etc
+
 
 
 # Module Imports
@@ -184,42 +185,50 @@ def ticketsByCategory(days, topic):
     plt.close()
 
 def overallTicketsByDay(amount):
-    dates = []
-    opened = []
-    closed = []
+    days = [] # list of mm/-d, used in final plot
+    dates = [] # list of actual dates, used only for the queries
+
+    opened = [] # list to hold quantities of opened tickets per day
+    closed = [] # list to hold quantities of closed tickets per day
+
+
+    today = datetime.now()  # get todays date and store it for finding the correct term late
+    lastDay = today.strftime('%Y%m%d') # strip the time data off the date so we get the start
+    lastDay = datetime.strptime(lastDay, '%Y%m%d') # convert that string back to an actual datetime object
+
+    dates.insert(0, lastDay) # put our first date in the first value of the dates list
+
+    for i in range(amount-1): # loop through the number of days we have minues one since we have handled the first date
+        dates.insert(0, dates[0] - relativedelta(days=1)) # subtract 1 day from the first element and insert it before the beginning
+
+    for day in dates: # go through all our dates and convert them to the month strings for final plotting
+        days.append(day.strftime('%-m/%-d')) # format the dates as mm/-d
+    # print(days) # debug
+
+    dates.append(today + relativedelta(days=1)) # now that we have used the dates to get the days, we want to append a final date of tomorrow for our query so we can get tickets from current day
+    # print(dates) # debug
+
     with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
         with con.cursor() as cur:  # start an entry cursor
-            today = datetime.now()  # get todays date and store it for finding the correct term later
-            targetStart = today - timedelta(days=int(amount)) # find the target start date from 
-            targetStart = targetStart.strftime('%Y%m%d') # convert to the proper format of YYYYMMDD for sql query
-            print(targetStart) # debug
-            cur.execute("SELECT created FROM ost_ticket WHERE created >= '" + targetStart + "'") # do just the created part since the close date may be in the last 2 weeks but opened way earlier
-            for entry in cur:
-                day = entry[0].strftime('%-m/%-d')
-                if not day in dates:
-                    dates.append(day)
-                    opened.append(0)
-                    closed.append(0)
-                opened[dates.index(day)] += 1 # add 1 count to the current day index on the oepened list
-            cur.execute("SELECT closed FROM ost_ticket WHERE closed >= '" + targetStart + "'") # do just the created part since the close date may be in the last 2 weeks but opened way earlier
-            for entry in cur:
-                # print(entry)
-                if entry[0]:
-                    day = entry[0].strftime('%-m/%-d')
-                    if not day in dates: # this probably wont be used since usually it will be populated by the created query, but have it just in case
-                        dates.append(day)
-                        opened.append(0)
-                        closed.append(0)
-                    closed[dates.index(day)] += 1 # add 1 count to the current day index on the oepened list
-            print(dates)
-            print(opened)
-            print(closed)
+            for i in range(amount): # go through the amount of days 0 to amount-2
+                opened.append(0) # initialize the month opened count with a 0
+                closed.append(0) # initialize the month closed count with a 0
+
+                cur.execute("SELECT created FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created < '" + dates[i+1].strftime('%Y%m%d') + "'") # do a query for tickets created in the dat we are looking at
+                for entry in cur:
+                    opened[i] += 1 # add 1 count to the opened list for the current month
+                cur.execute("SELECT closed FROM ost_ticket WHERE closed >= '" + dates[i].strftime('%Y%m%d') + "' AND closed < '" + dates[i+1].strftime('%Y%m%d') + "'") # do a query for tickets closed in the day we are looking at
+                for entry in cur:
+                    closed[i] += 1 # add 1 count to the closed list for the current month
+            print('Days: ' + str(days))
+            print('Opened Counts: ' + str(opened))
+            print('Closed Counts: ' + str(closed))
 
     plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
-    plt.plot(dates, opened, 'bo', linewidth=.5, linestyle='--', label='Opened')
-    plt.plot(dates, closed, 'go', linewidth=.5, linestyle='--', label='Closed')
+    plt.plot(days, opened, 'bo', linewidth=.5, linestyle='--', label='Opened')
+    plt.plot(days, closed, 'go', linewidth=.5, linestyle='--', label='Closed')
     plt.title('Tickets Opened/Closed in the last ' + str(amount) + ' days')
-    plt.xticks(dates, rotation='vertical') # set the printing of the x-axis labels to be vertical so we can actually read them
+    plt.xticks(days, rotation='vertical') # set the printing of the x-axis labels to be vertical so we can actually read them
     plt.grid(True)
     plt.legend() # show the legend in the top right corner
     plt.savefig('Graphs/Overall Tickets For Last ' + str(amount) + ' days.png') # save to .png file with the amount written
@@ -227,45 +236,79 @@ def overallTicketsByDay(amount):
     plt.close()
 
 def overallTicketsByMonth(amount):
-    months = []
-    opened = []
-    closed = []
+    months = [] # list for month mm/yy, used in final plot
+    dates = [] # list to hold the dates for each month, only used for queries
+
+    opened = [] # list to hold quantities of opened tickets per month
+    closed = [] # list to hold quantities of closed tickets per month
+
+    today = datetime.now()  # get todays date and store it for finding the correct term late
+    thisMonthsStart = today.strftime('%Y%m01') # set the date back to the first of the month
+    thisMonthsStart = datetime.strptime(thisMonthsStart, '%Y%m%d') # convert that string back to an actual datetime object
+
+    dates.insert(0, thisMonthsStart) # put our first date in the first value of the dates list
+    for i in range(amount-1): # loop through the number of months we have minues one since we have handled the first date
+        dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
+
+    for month in dates: # go through all our dates and convert them to the month strings for final plotting
+        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+    print(months) # debug
+
+    dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
+    # print(dates) # debug
+
     with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
         with con.cursor() as cur:  # start an entry cursor
-            today = datetime.now()  # get todays date and store it for finding the correct term later
-            targetStart = today - relativedelta(months=int(amount)) # find the target start date from 
-            targetStart = targetStart.strftime('%Y%m%d') # convert to the proper format of YYYYMMDD for sql query
-            print(targetStart) # debug
-            cur.execute("SELECT created FROM ost_ticket WHERE created >= '" + targetStart + "'") # do just the created part since the close date may be in the last 2 weeks but opened way earlier
-            for entry in cur:
-                month = entry[0].strftime('%m/%y') # get the created date as mm/yy
-                if not month in months:
-                    months.append(month)
-                    opened.append(0)
-                    closed.append(0)
-                opened[months.index(month)] += 1 # add 1 count to the current day index on the oepened list
-            cur.execute("SELECT closed FROM ost_ticket WHERE closed >= '" + targetStart + "'") # do just the created part since the close date may be in the last 2 weeks but opened way earlier
-            for entry in cur:
-                # print(entry)
-                if entry[0]:
-                    month = entry[0].strftime('%m/%y') # get the closed date as mm/yy
-                    if not month in months: # this probably wont be used since usually it will be populated by the created query, but have it just in case
-                        months.append(month)
-                        opened.append(0)
-                        closed.append(0)
-                    closed[months.index(month)] += 1 # add 1 count to the current day index on the oepened list
-            print(months)
-            print(opened)
-            print(closed)
+            for i in range(amount): # go through the amount of months 0 to amount-1
+                opened.append(0) # initialize the month opened count with a 0
+                closed.append(0) # initialize the month closed count with a 0
+                
+                cur.execute("SELECT created FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created < '" + dates[i+1].strftime('%Y%m%d') + "'") # do a query for tickets created in the month we are looking at
+                for entry in cur:
+                    opened[i] += 1 # add 1 count to the opened list for the current month
+                cur.execute("SELECT closed FROM ost_ticket WHERE closed >= '" + dates[i].strftime('%Y%m%d') + "' AND closed < '" + dates[i+1].strftime('%Y%m%d') + "'") # do a query for tickets closed in the month we are looking at
+                for entry in cur:
+                    closed[i] += 1 # add 1 count to the closed list for the current month
+            # print(months)
+            # print(opened)
+            # print(closed)
 
+    # make a line graph
     plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
     plt.plot(months, opened, 'bo', linewidth=.5, linestyle='--', label='Opened')
     plt.plot(months, closed, 'go', linewidth=.5, linestyle='--', label='Closed')
-    plt.title('Tickets Opened/Closed in the last ' + str(amount) + ' months')
+    plt.title('Tickets Opened/Closed in each of the last ' + str(amount) + ' months')
     plt.xticks(months, rotation='vertical') # set the printing of the x-axis labels to be vertical so we can actually read them
     plt.grid(True)
     plt.legend() # show the legend
-    plt.savefig('Graphs/Overall Tickets For Last ' + str(amount) + ' months.png') # save to .png file with the amount written
+    plt.savefig('Graphs/Overall Tickets For Last ' + str(amount) + ' months Line.png') # save to .png file with the amount written
+    # plt.show()
+    plt.close()
+
+    # make a bar graph with the same data
+    fig, ax = plt.subplots(figsize=(8.5,5), dpi=200, squeeze=True) # set the size of the figure before we plot anything to it or it will not work
+    plt.margins(x=0.01) # set less padding to left and right of end bars
+    plt.subplots_adjust(top=0.939, bottom=0.097, left=0.055, right=0.982, hspace=0.2, wspace=0.2) # set less padding on outside of graph
+
+    barWidth = 0.4 # set how wide our bars are
+
+    # Set position of bar on X axis
+    bar1 = np.arange(len(months)) # make a nice equal arrangement based on how many months we have
+    bar2 = [x + barWidth for x in bar1] # have the same points offset by our width for bar2
+
+    openBar = ax.bar(bar1, opened, width=barWidth, color='blue', edgecolor='black', label='Tickets Opened') # put the opened bars on the chart, plotted on the points of bar1
+    closedBar = ax.bar(bar2, closed, width=barWidth, color='green', edgecolor='black', label='Tickets Closed') # put the closed bars on the chart, plotted on the points of bar2
+    plt.title('Tickets Opened/Closed in each of the last ' + str(amount) + ' months') # set the title of the graph
+
+    # Set x-ticks (bottom labels)
+    plt.xticks(bar1 + (barWidth / 2), months, fontsize='small', rotation='vertical') # put the x ticks in the middle of the distribution of the bars, set font to small, rotate vertically
+
+    plt.bar_label(openBar, fontsize='x-small', color='blue') # label the opened bar graph 
+    plt.bar_label(closedBar, fontsize='x-small', color='darkgreen') # label the closed bar graph 
+
+    plt.grid(axis='y') # show only the horizontal grid lines
+    plt.legend() # show the legend
+    plt.savefig('Graphs/Overall Tickets For Last ' + str(amount) + ' months Bar.png') # save to .png file with the amount written
     # plt.show()
     plt.close()
 
@@ -454,7 +497,7 @@ def individualCloseTimesPerMonth(amount):
                     # Make the plot
                     plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
                     plt.title('Average Close Time for ' + agents[ID] + ' in the last ' + str(amount) + ' Months')
-                    plt.plot(months, agentAvgCloseTimeHours, 'bo', linewidth=.5, linestyle='--', label=agents[ID])
+                    plt.plot(months, agentAvgCloseTimeHours, 'bo', linewidth=.5, linestyle='--', label=agents[ID]+' Close Time')
                     plt.plot(months, totalAvgCloseTimeHours, 'gx', label="District Average")
                     # Label the points https://queirozf.com/entries/add-labels-and-text-to-matplotlib-plots-annotation-examples
                     for x,y in zip(months, agentAvgCloseTimeHours):
@@ -570,6 +613,152 @@ def combinedTicketsCloseTimePerMonth(amount):
     # plt.show()
     plt.close()
 
+def responseTimePerAgentByMonth(amount):
+    agents = {} # create dictionary for ids, names
+    months = [] # list for month mm/yy
+    dates = [] # list to hold the dates for each month
+
+    totalAvgResponseTimeDeltas = []
+    totalAvgResponseTimeHours = []
+
+    today = datetime.now()  # get todays date and store it for finding the correct term late
+    thisMonthsStart = today.strftime('%Y%m01') # set the date back to the first of the month
+    thisMonthsStart = datetime.strptime(thisMonthsStart, '%Y%m%d') # convert that string back to an actual datetime object
+
+    dates.insert(0, thisMonthsStart) # put our first date in the first value of the dates list
+    for i in range(amount-1): # loop through the number of months we have minues one since we have handled the first date
+        dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
+
+    for month in dates: # go through all our dates and convert them to the month strings for final plotting
+        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+    print(months) # debug
+
+    dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
+    # print(dates) # debug
+
+    # Connect to MariaDB Platform
+    with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
+        with con.cursor() as cur:  # start an entry cursor
+            cur.execute('SELECT staff_id, firstname FROM ost_staff WHERE isactive = 1') # just get all staff_id for active agents, store them in another list
+            for agent in cur:
+                if not agent[0] in agents: # if they dont exist in the dict then we want to add them to it
+                    agents[str(agent[0])] = str(agent[1]) # append the id, name pair to the agent dictionary
+            for ID in agents: # go through each agent
+                cur.execute('SELECT ticket_id FROM ost_ticket WHERE staff_id = ' + ID) # just select total number of tickets for that agent
+                tickets = cur.fetchall()
+                if len(tickets) > 10: # ignore agents with less than 10 total tickets all time, as they probably have skewed results
+                    avgResponseTimeDeltas = [] # list for the individual agents average response time delta for each month
+                    avgResponseTimeHours = [] # list for the average response time hours for each month, used in final plot per agent
+                    print(agents[ID]) # debug
+                    for i in range(amount): # go through each month
+                        agentMonthlyResponseDeltas = [] # list for each individual response time per ticket, these deltas get averaged down for the monthly average
+                        totalMonthlyResponseDeltas = [] # same as above, but for district wide
+
+                        # Do the agent (individual) results for each month
+                        cur.execute("SELECT ost_ticket.number, ost_ticket.created, ost_ticket.closed, ost_thread.id FROM ost_ticket INNER JOIN ost_thread ON ost_ticket.ticket_id = ost_thread.object_id WHERE ost_ticket.staff_id = " + ID + " AND ost_ticket.created >= '" + dates[i].strftime('%Y%m%d') + "' AND ost_ticket.created < '" + dates[i+1].strftime('%Y%m%d') + "'")
+                        agentResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
+                        print(agents[ID] + ': Month ' + str(i+1) + ': ' + str(len(agentResults)) + ' tickets')
+                        if agentResults: # need at least 1 ticket to do the average calculations on
+                            for entry in agentResults: # go through each ticket result
+                                print(entry)
+                                ticketCreated = entry[1] # ticket created date in datetime
+                                ticketClosed = entry[2] # ticket closed date in datetime, or null if not closed yet
+                                threadID = str(entry[3])
+                                cur.execute('SELECT created FROM ost_thread_entry WHERE (type = "R" OR type = "N") AND thread_id = ' + threadID)
+                                agentThreads = cur.fetchall()
+                                if agentThreads: # check to see if there are any responses
+                                    print('First response at: ' + str(agentThreads[0][0])) # take the first response from the results, and the 0 element (created) as the first time
+                                    response = agentThreads[0][0]
+                                else: # if there is no agentThreads that means there has not been a reply or internal note from anyone
+                                    if ticketClosed: # if the ticket was closed without a response, set response time to the close time as they solved the issue
+                                        print('No reponse, but ticket was closed')
+                                        response = ticketClosed
+                                    else:
+                                        print('No response yet')
+                                        response = today # just set the response time as current time, as thats the earliest they could respond
+                                responseTimeDelta = response - ticketCreated
+                                print('Response took ' + str(responseTimeDelta))
+                                agentMonthlyResponseDeltas.append(responseTimeDelta)
+                            monthAvgResponseTimeDelta = sum(agentMonthlyResponseDeltas, timedelta(0)) / len(agentMonthlyResponseDeltas) # get the average by adding up all the time deltas and dividing by instances
+                        else:
+                            print('Ignoring month due to no tickets')
+                            monthAvgResponseTimeDelta = np.nan # set the avg time to null so we skip over that point on the graph
+                        avgResponseTimeDeltas.append(monthAvgResponseTimeDelta) # add our current month average response delta to the overall list
+
+                        # Now do basically the same but for the overall district if we dont already have the data so we dont have to run the same query over and over
+                        if  i not in range(len(totalAvgResponseTimeDeltas)):
+                            cur.execute("SELECT ost_ticket.number, ost_ticket.created, ost_ticket.closed, ost_thread.id FROM ost_ticket INNER JOIN ost_thread ON ost_ticket.ticket_id = ost_thread.object_id WHERE ost_ticket.created >= '" + dates[i].strftime('%Y%m%d') + "' AND ost_ticket.created < '" + dates[i+1].strftime('%Y%m%d') + "'")
+                            totalResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
+                            print('Total Month ' + str(i+1) + ': ' + str(len(totalResults)) + ' tickets')
+                            if totalResults: # need at least 1 ticket to do the average calculations on
+                                for entry in totalResults: # go through each ticket result
+                                    print(entry)
+                                    ticketCreated = entry[1] # ticket created date in datetime
+                                    ticketClosed = entry[2] # ticket closed date in datetime, or null if not closed yet
+                                    threadID = str(entry[3])
+                                    cur.execute('SELECT created FROM ost_thread_entry WHERE (type = "R" OR type = "N") AND thread_id = ' + threadID)
+                                    totalThreads = cur.fetchall()
+                                    if totalThreads: # check to see if there are any responses
+                                        print('First response at: ' + str(totalThreads[0][0])) # take the first response from the results, and the 0 element (created) as the first time
+                                        response = totalThreads[0][0]
+                                    else: # if there is no totalThreads that means there has not been a reply or internal note from anyone
+                                        if ticketClosed: # if the ticket was closed without a response, set response time to the close time as they solved the issue
+                                            print('No reponse, but ticket was closed')
+                                            response = ticketClosed
+                                        else:
+                                            print('No response yet')
+                                            response = today # just set the response time as current time, as thats the earliest they could respond
+                                    responseTimeDelta = response - ticketCreated
+                                    print('Response took ' + str(responseTimeDelta))
+                                    totalMonthlyResponseDeltas.append(responseTimeDelta)
+                                monthAvgResponseTimeDelta = sum(totalMonthlyResponseDeltas, timedelta(0)) / len(totalMonthlyResponseDeltas) # get the average by adding up all the time deltas and dividing by instances
+                            else:
+                                print('Ignoring overall month due to no tickets')
+                                monthAvgResponseTimeDelta = np.nan # set the avg time to null so we skip over that point on the graph
+                            totalAvgResponseTimeDeltas.append(monthAvgResponseTimeDelta) # add our current month average response delta to the overall list
+
+                    # print(avgResponseTimeDeltas) # debug showing all their response deltas by month
+                    # print(totalAvgResponseTimeDeltas) # debug showing the district wide response deltas by month
+                    
+                    # convert the time detlas to hours so we can graph them
+                    for delta in avgResponseTimeDeltas:
+                        if isinstance(delta, timedelta): # if there is a valid time delta we convert it to hours, otherwise just keep the np.nan
+                            hours = (delta.days * 24) + delta.seconds / 3600
+                            avgResponseTimeHours.append(hours)
+                        else:
+                            avgResponseTimeHours.append(np.nan)
+                    print(agents[ID] + ' Avg Hours: ' + str(avgResponseTimeHours))
+
+                    # convert the total time deltas to hours as well if we dont already have them
+                    if len(totalAvgResponseTimeHours) == 0:
+                        for delta in totalAvgResponseTimeDeltas:
+                            if isinstance(delta, timedelta): # if there is a valid time delta we convert it to hours, otherwise just keep the np.nan
+                                hours = (delta.days * 24) + delta.seconds / 3600
+                                totalAvgResponseTimeHours.append(hours)
+                            else:
+                                totalAvgResponseTimeHours.append(np.nan)
+                    print('Total Avg Hours: ' + str(totalAvgResponseTimeHours))
+
+                    # Make the plot
+                    plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
+                    plt.title('Average Response Time for ' + agents[ID] + ' in the last ' + str(amount) + ' Months')
+                    plt.plot(months, avgResponseTimeHours, color='blueviolet', marker='o', linewidth=.5, linestyle='--', label=agents[ID] + ' Response Time')
+                    plt.plot(months, totalAvgResponseTimeHours, 'gx', label="District Average")
+                    # Label the points https://queirozf.com/entries/add-labels-and-text-to-matplotlib-plots-annotation-examples
+                    for x,y in zip(months, avgResponseTimeHours):
+                        if not np.isnan(y):
+                            label = int(y)
+                        plt.annotate(label, (x,y), textcoords='offset points', xytext=(10,6), ha='center', color='blueviolet')
+
+                    plt.ylabel('Avg. Hours to Respond')
+                    plt.xlabel('Month')
+                    plt.grid(True)
+                    plt.legend() # show the legend
+                    plt.savefig('Graphs/' + ID + '-' + agents[ID] + 'ResponseTimePerMonth.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
+                    # plt.show()
+                    plt.close()
+
+
 # ---- Main execution of program -----
 # Start by deleting all old .png files in the Graphs directory in case some day/month counts have changed so we dont include old graphs
 oldfiles = glob.glob('Graphs/*.png')
@@ -577,7 +766,8 @@ for f in oldfiles:
     print('Removing old file ' + f)
     os.remove(f)
 
-t.sleep(2)
+t.sleep(2) # needed to give the files time to be fully removed or it can cause issues on slower machines
+
 combinedTicketsCloseTimePerMonth(16) # get the combined bar/line graph for avg close time and amount of tickets for last 16 months
 
 ticketsPerAgent(14) # call the tickets per agent for the last 2 weeks
@@ -590,17 +780,19 @@ overallTicketsByMonth(18) # get the overall ticket opened/closed stats for the 1
 closeTimePerAgentByDays(14) # get average close time for the last 2 weeks
 closeTimePerAgentByDays(90) # get average close time for last 3 months
 individualCloseTimesPerMonth(12) # get individual close times for each agent in the last 12 months
-t.sleep(2)
+responseTimePerAgentByMonth(12) # get the avg response time per agent per month for the last year
+t.sleep(2) # needed to give the files time to save and close otherwise the order gets messed up
 ticketsByCategory(14, 'Staff') # get the amount of tickets per category from staff for the last 2 weeks
 ticketsByCategory(60, 'Staff') # get the amount of tickets per category from staff for the last 2 months
+t.sleep(1) # needed to give the files time to save and close otherwise the order gets messed up
 ticketsByCategory(14, 'Parent') # get the amount of tickets per category from parents for the last 2 weeks
 ticketsByCategory(60, 'Parent') # get the amount of tickets per category from parents for the last 2 months
+t.sleep(1) # needed to give the files time to save and close otherwise the order gets messed up
 ticketsByCategory(14, 'Student') # get the amount of tickets per category from students for the last 2 weeks
 ticketsByCategory(60, 'Student') # get the amount of tickets per category from students for the last 2 months
 
 
-
-# convert all files ending in .png inside a directory.  https://pypi.org/project/img2pdf/
+# # convert all files ending in .png inside a directory.  https://pypi.org/project/img2pdf/
 dirname = "Graphs/" # our folder we have each graph in
 imgs = [] # empty list to hold each path to file we will join into the pdf
 files = os.listdir(dirname) # get list of files in the directory
@@ -615,7 +807,8 @@ outputfile = datetime.now().strftime('%Y-%m-%d') + '-ticket-stats.pdf'
 with open(outputfile,"wb") as f: # open our output file, take todays date as ISO-8601 for sorting purposes
 	f.write(img2pdf.convert(imgs)) # write the actual file
 
-# # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
+t.sleep(2) # wait for file to finish saving fully
+# send the email with the pdf. need to have the credential files saved as oauth2_creds.json
 print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
-# with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
-    # yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
+with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
+    yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
