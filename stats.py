@@ -15,14 +15,16 @@
 
 # For single agent, look at average ticket closing time per month/week/etc
 
+# Combined view of total tickets and avg close time per month
+
+# Save all plots to files
+# Take all plot files and put them together with img2pdf
+
 # ---- TO-DO -----
 # Get the last fiscal year (july 1), plot how many open/closed per week? have to use relative time delta for week additions, and use the weekday function to find the mondays https://dateutil.readthedocs.io/en/stable/relativedelta.html
 # Get the breakdown of student/parent/staff tickets in last month?
 
 # For single agent, look at average first response time per month/week/etc
-
-# Save all plots to files
-# Take all plot files and put them together with img2pdf
 
 
 # Module Imports
@@ -45,6 +47,9 @@ un= os.environ.get('OSTICKET_USERNAME')
 pw = os.environ.get('OSTICKET_PASSWORD')
 host = os.environ.get('OSTICKET_HOST')
 db = os.environ.get('OSTICKET_DB')
+
+emailFrom = os.environ.get('EMAIL_SENDER')
+emailTo = os.environ.get('EMAIL_RECEIVER')
 
 print("Username: " + str(un) + " |Password: " + str(pw) + " |Server: " + str(host) + " |Database: " + str(db)) #debug so we can see where mariadb is trying to connect to/with
 
@@ -387,7 +392,7 @@ def individualCloseTimesPerMonth(amount):
                         totalMonthlyCloseDeltas = []
 
                         # Do the agent (individual) results for each month
-                        cur.execute("SELECT created, closed FROM ost_ticket WHERE staff_id = " + ID + " AND created >= '" + dates[i].strftime('%Y%m%d') + "' AND created <= '" + dates[i+1].strftime('%Y%m%d') + "'")
+                        cur.execute("SELECT created, closed FROM ost_ticket WHERE staff_id = " + ID + " AND created >= '" + dates[i].strftime('%Y%m%d') + "' AND created < '" + dates[i+1].strftime('%Y%m%d') + "'")
                         agentResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
                         print(agents[ID] + ': Month ' + str(i+1) + ': ' + str(len(agentResults)) + ' tickets')
                         if agentResults: # need to make sure there is at least one ticket to do the math on or we get errors
@@ -405,7 +410,7 @@ def individualCloseTimesPerMonth(amount):
 
                         # Now do basically the same but for the overall district if we dont already have the data so we dont have to run the same query over and over
                         if  i not in range(len(totalAvgCloseTimeDeltas)):
-                            cur.execute("SELECT created, closed FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created <= '" + dates[i+1].strftime('%Y%m%d') + "'")
+                            cur.execute("SELECT created, closed FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created < '" + dates[i+1].strftime('%Y%m%d') + "'")
                             totalResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
                             print('Total: Month ' + str(i+1) + ': ' + str(len(totalResults)) + ' tickets')
                             if totalResults: # need to make sure there is at least one ticket to do the math on or we get errors
@@ -483,6 +488,88 @@ def individualCloseTimesPerMonth(amount):
             # plt.show()
             plt.close()
 
+def combinedTicketsCloseTimePerMonth(amount):
+    months = [] # list for month mm/yy, used in final plot as x axis
+    counts = [] # list for # of tickets per month, used in final plot
+    dates = [] # list to hold the start/end dates for each month, used to query the tickets between the months
+
+    avgCloseTimeDeltas = [] # list to hold the avg close time deltas per month
+    avgCloseTimeHours = [] # list to hold the avg close time in hours per month, used in final plotting
+    
+
+    today = datetime.now()  # get todays date and store it for finding the correct term late
+    thisMonthsStart = today.strftime('%Y%m01') # set the date back to the first of the month
+    thisMonthsStart = datetime.strptime(thisMonthsStart, '%Y%m%d') # convert that string back to an actual datetime object
+
+    dates.insert(0, thisMonthsStart) # put our first date in the first value of the dates list
+    for i in range(amount-1): # loop through the number of months we have minues one since we have handled the first date
+        dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
+
+    for month in dates: # go through all our dates and convert them to the month strings for final plotting
+        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+    print(months)
+
+    dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
+    # print(dates) # debug
+
+    # Connect to MariaDB Platform
+    with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
+        with con.cursor() as cur:  # start an entry cursor
+            for i in range(amount): # go through each month 0 to amount-1
+                monthlyCloseDeltas = [] # list to hold each individual close delta for each ticket. Gets reset each month to not carry over old data
+
+                cur.execute("SELECT created, closed FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created < '" + dates[i+1].strftime('%Y%m%d') + "'")
+                totalResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
+                print('Total: Month ' + str(i+1) + ': ' + str(len(totalResults)) + ' tickets')
+                counts.append(len(totalResults)) # add the total count of tickets for that month to the counts list
+                if totalResults: # need to make sure there is at least one ticket to do the math on or we get errors
+                    for entry in totalResults:
+                        # print(entry)
+                        if entry[1]: # if there is a close time
+                            closeTimeDelta = entry[1] - entry[0]
+                            monthlyCloseDeltas.append(closeTimeDelta)
+                    avgMonthlyCloseTime = sum(monthlyCloseDeltas, timedelta(0)) / len(monthlyCloseDeltas) # get the average by adding up all the time deltas and dividing by instances
+                else:
+                    # print('Ignoring month due to low ticket count')
+                    avgMonthlyCloseTime = np.nan # set the avg time to null so we skip over that point on the graph
+                print('Total Average Close Time: ' + str(avgMonthlyCloseTime))
+                avgCloseTimeDeltas.append(avgMonthlyCloseTime)
+
+    # print(months) # debug
+    # print(counts) # debug
+    # print(avgCloseTimeDeltas) # debug
+
+    # convert the time detlas to hours so we can graph them
+    for delta in avgCloseTimeDeltas:
+        if isinstance(delta, timedelta): # if there is a valid time delta we convert it to hours, otherwise just keep the np.nan
+            hours = (delta.days * 24) + delta.seconds / 3600
+            avgCloseTimeHours.append(hours)
+        else:
+            avgCloseTimeHours.append(np.nan)
+    print(avgCloseTimeHours)
+
+    # plot the data
+    plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
+    plt.title('Average Close Time and Ticket Counts District Wide for the Last ' + str(amount) + ' Months')
+    plt.plot(months, avgCloseTimeHours, color='black', marker='.', linewidth=.5, linestyle='--', label="Avg. Close Time in Hrs") # plot the avg close time line graph
+    bar = plt.bar(months, counts, color='plum', label='Tickets Opened')
+
+    # Label the points on the line graph https://queirozf.com/entries/add-labels-and-text-to-matplotlib-plots-annotation-examples
+    for x,y in zip(months, avgCloseTimeHours):
+        if not np.isnan(y):
+            label = int(y)
+        else:
+            label = ''
+        plt.annotate(label, (x,y), textcoords='offset points', xytext=(10,6), ha='center', color='black')
+    plt.bar_label(bar, label_type='center', fontsize='small', color='indigo') # label the bar graph 
+    plt.xlabel('Month')
+    plt.xticks(months, rotation='vertical') # set the printing of the x-axis labels to be vertical so we can actually read them
+    plt.grid(axis='y')
+    plt.legend() # show the legend
+    plt.savefig('Graphs/Combined Ticket Count and Avg Close Time.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
+    # plt.show()
+    plt.close()
+
 # ---- Main execution of program -----
 # Start by deleting all old .png files in the Graphs directory in case some day/month counts have changed so we dont include old graphs
 oldfiles = glob.glob('Graphs/*.png')
@@ -491,6 +578,7 @@ for f in oldfiles:
     os.remove(f)
 
 t.sleep(2)
+combinedTicketsCloseTimePerMonth(16) # get the combined bar/line graph for avg close time and amount of tickets for last 16 months
 
 ticketsPerAgent(14) # call the tickets per agent for the last 2 weeks
 ticketsPerAgent(60) # do the last 2 months
@@ -511,6 +599,7 @@ ticketsByCategory(14, 'Student') # get the amount of tickets per category from s
 ticketsByCategory(60, 'Student') # get the amount of tickets per category from students for the last 2 months
 
 
+
 # convert all files ending in .png inside a directory.  https://pypi.org/project/img2pdf/
 dirname = "Graphs/" # our folder we have each graph in
 imgs = [] # empty list to hold each path to file we will join into the pdf
@@ -526,7 +615,7 @@ outputfile = datetime.now().strftime('%Y-%m-%d') + '-ticket-stats.pdf'
 with open(outputfile,"wb") as f: # open our output file, take todays date as ISO-8601 for sorting purposes
 	f.write(img2pdf.convert(imgs)) # write the actual file
 
-# send the email with the pdf. need to have the credential files saved as oauth2_creds.json
-print('Sending ' + outputfile + ' by email')
-# with yagmail.SMTP('@d118.org', oauth2_file="oauth2_creds.json") as yag:
-    # yag.send(to = '@d118.org', subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
+# # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
+print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
+# with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
+    # yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
