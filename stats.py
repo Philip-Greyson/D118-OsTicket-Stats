@@ -18,17 +18,16 @@
 
 # Combined view of total tickets and avg close time per month
 
+# Get the breakdown of student/parent/staff tickets in last month?
+
 # Save all plots to files
 # Take all plot files and put them together with img2pdf
 
 # ---- TO-DO -----
-# Get the last fiscal year (july 1), plot how many open/closed per week? have to use relative time delta for week additions, and use the weekday function to find the mondays https://dateutil.readthedocs.io/en/stable/relativedelta.html
-# Get the breakdown of student/parent/staff tickets in last month?
-
-
-
+# Cleanup
 
 # Module Imports
+from operator import indexOf
 import numpy as np
 import matplotlib.pyplot as plt
 import mariadb # needed to connect to OsTicket database
@@ -758,7 +757,43 @@ def responseTimePerAgentByMonth(amount):
                     # plt.show()
                     plt.close()
 
+def topicPieBreakdownByDays(amount):
+    topics = [] # empty list to hold the topic names
+    counts = [] # empty list to hold the counts per topic
+    labels = []
+    today = datetime.now()  # get todays date and store it for finding the correct term later
+    targetStart = today - relativedelta(days=amount) # get our start day by subtracting the amount of days specified
+    targetStart = targetStart.strftime('%Y%m%d') # format the start date as YYYYMMDD for SQL query purposes
+    print('Looking for breakdown of tickets by topic after ' + targetStart)
 
+    # Connect to the database
+    with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
+        with con.cursor() as cur:  # start an entry cursor
+            cur.execute("SELECT ost_ticket.number, ost_ticket.created, ost_ticket.topic_id, ost_help_topic.topic FROM ost_ticket INNER JOIN ost_help_topic ON ost_ticket.topic_id = ost_help_topic.topic_id WHERE ost_ticket.created > '" + targetStart + "' ORDER BY ost_ticket.number")
+            for entry in cur: # go through each ticket
+                # print(entry) # debug
+                if not entry[3] in topics: #if we dont have the current topic name in our topics list
+                    topics.append(entry[3]) # add the topic name to the list
+                    counts.append(0) # also add a 0 to that slot in the counts list
+                counts[topics.index(entry[3])] += 1 # add 1 to the same index of counts that the topic entry is in
+
+            print('Topic names: ' + str(topics)) # debug
+            print('Occurances of each topic: ' + str(counts))
+
+    # make a pie graph
+    plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
+    plt.subplots_adjust(top=0.927, bottom=0.03, left=0.251, right=0.982, hspace=0.2, wspace=0.2) # set spacing around edges to better fit legend and graph
+    for i in range(len(topics)):
+        labels.append(topics[i] + ' | ' + str(counts[i]))
+    print(labels)
+    explode = [0.1 for x in counts]
+    wedges, texts = plt.pie(counts, explode=explode)
+    plt.legend(wedges, labels, title="Topics | Counts", loc='upper left', bbox_to_anchor=(-.65, 1))
+    plt.title('Tickets Opened by topic in last ' + str(amount) + ' days') # set the title of the graph
+    # plt.show()
+    plt.savefig('Graphs/Tickets by Topic Breakdown For Last ' + str(amount) + ' days Pie.png') # save to .png file with the amount written
+    plt.close()
+            
 # ---- Main execution of program -----
 # Start by deleting all old .png files in the Graphs directory in case some day/month counts have changed so we dont include old graphs
 oldfiles = glob.glob('Graphs/*.png')
@@ -790,9 +825,13 @@ ticketsByCategory(60, 'Parent') # get the amount of tickets per category from pa
 t.sleep(1) # needed to give the files time to save and close otherwise the order gets messed up
 ticketsByCategory(14, 'Student') # get the amount of tickets per category from students for the last 2 weeks
 ticketsByCategory(60, 'Student') # get the amount of tickets per category from students for the last 2 months
+t.sleep(1)
+topicPieBreakdownByDays(14) # get the pie chart breakdown of topics for last 2 weeks
+topicPieBreakdownByDays(90) # get the pie chart breakdown of topics for last 3 months
+topicPieBreakdownByDays(365) # get the pie chart breakdown of topics for last year
 
 
-# # convert all files ending in .png inside a directory.  https://pypi.org/project/img2pdf/
+# convert all files ending in .png inside a directory.  https://pypi.org/project/img2pdf/
 dirname = "Graphs/" # our folder we have each graph in
 imgs = [] # empty list to hold each path to file we will join into the pdf
 files = os.listdir(dirname) # get list of files in the directory
