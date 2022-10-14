@@ -1,30 +1,7 @@
-# https://mariadb.com/resources/blog/how-to-connect-python-programs-to-mariadb/
-# https://www.geeksforgeeks.org/bar-plot-in-matplotlib/
-# https://datatofish.com/bar-chart-python-matplotlib/
-# https://pypi.org/project/img2pdf/
-# https://github.com/kootenpv/yagmail#username-and-password
-
-# ----- Done -----
-# Get the last x days of tickets, plot how many open/closed/waiting per agent
-# Get the last x days of tickets, plot how many per help category
-
-# Get the last x days of tickets, plot how many open and closed per day
-# Get the last x months of tickets, plot how many open/closed per month
-
-# Get last x months of tickets, plot average close time by agent and overall in district
-# Get last x months of tickets, plot average first response by agent and overall in district
-
-# For single agent, look at average ticket closing time per month/week/etc
-
-# Combined view of total tickets and avg close time per month
-
-# Get the breakdown of student/parent/staff tickets in last month?
-
-# Save all plots to files
-# Take all plot files and put them together with img2pdf
-
 # ---- TO-DO -----
-# Cleanup
+# Cleanup, make log file
+# Re-write category breakdown to be topic-agnostic.
+# Re-write ticketsPerAgent to use date in queries, exclude uneccessary info
 
 # Module Imports
 from operator import indexOf
