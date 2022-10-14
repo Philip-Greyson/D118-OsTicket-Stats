@@ -525,7 +525,7 @@ def combinedTicketsCloseTimePerMonth(amount):
         dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
 
     for month in dates: # go through all our dates and convert them to the month strings for final plotting
-        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+        months.append(month.strftime('%m/%y')) # format the dates as mm/yy
     print(months)
 
     dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
@@ -826,5 +826,5 @@ with open(outputfile,"wb") as f: # open our output file, take todays date as ISO
 t.sleep(2) # wait for file to finish saving fully
 # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
 print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
-with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
-    yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
+# with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
+    # yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)

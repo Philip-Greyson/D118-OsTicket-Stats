@@ -42,6 +42,6 @@ If you have questions, suggestions, or would like my assistance as a consultant 
   - NumPy - has a few useful math functions: [Info Link](https://numpy.org/install/) - `pip install numpy`
   - Matplotlib - Creates the graphs/plots: [Info Link](https://matplotlib.org/) - `pip install matplotlib`
   - Img2pdf - Creates the output .pdf from individual pictures: [Info Link](https://pypi.org/project/img2pdf/) - `pip3 install img2pdf`
-  - Yagmail - Sends the pdf in an email: [Info Link](https://pypi.org/project/yagmail/)
+  - Yagmail - Sends the pdf in an email: [Info Link](https://pypi.org/project/yagmail/) - `pip3 install yagmail[all]`
     - This is what requires the oauth2_creds.json file is needed for. See <https://github.com/kootenpv/yagmail#oauth2> and [this](https://blog.macuyiko.com/post/2016/how-to-send-html-mails-with-oauth2-and-gmail-in-python.html) for instructions on setting up the Goole API project and credentials
     - The sender and recipient emails need to be stored as the environment variables 'EMAIL_SENDER' and 'EMAIL_RECEIVER' respectively
