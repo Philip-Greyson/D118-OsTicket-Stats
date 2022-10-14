@@ -827,5 +827,5 @@ with open(outputfile,"wb") as f: # open our output file, take todays date as ISO
 t.sleep(2) # wait for file to finish saving fully
 # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
 print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
-# with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
-    # yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
+with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
+    yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
