@@ -2,6 +2,7 @@
 # Cleanup, make log file
 # Re-write category breakdown to be topic-agnostic.
 # Re-write ticketsPerAgent to use date in queries, exclude uneccessary info
+# Look into checking os type (windows/linux) to get - vs # in strftime automatically
 
 # Module Imports
 from operator import indexOf
@@ -161,7 +162,7 @@ def ticketsByCategory(days, topic):
     plt.close()
 
 def overallTicketsByDay(amount):
-    days = [] # list of mm/-d, used in final plot
+    days = [] # list of mm/dd, used in final plot
     dates = [] # list of actual dates, used only for the queries
 
     opened = [] # list to hold quantities of opened tickets per day
@@ -178,7 +179,7 @@ def overallTicketsByDay(amount):
         dates.insert(0, dates[0] - relativedelta(days=1)) # subtract 1 day from the first element and insert it before the beginning
 
     for day in dates: # go through all our dates and convert them to the month strings for final plotting
-        days.append(day.strftime('%-m/%-d')) # format the dates as mm/-d
+        days.append(day.strftime('%m/%d')) # format the dates as mm/dd
     # print(days) # debug
 
     dates.append(today + relativedelta(days=1)) # now that we have used the dates to get the days, we want to append a final date of tomorrow for our query so we can get tickets from current day
@@ -227,7 +228,7 @@ def overallTicketsByMonth(amount):
         dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
 
     for month in dates: # go through all our dates and convert them to the month strings for final plotting
-        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+        months.append(month.strftime('%m/%y')) # format the dates as mm/yy
     print(months) # debug
 
     dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
@@ -385,7 +386,7 @@ def individualCloseTimesPerMonth(amount):
         dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
 
     for month in dates: # go through all our dates and convert them to the month strings for final plotting
-        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+        months.append(month.strftime('%m/%y')) # format the dates as mm/yy
     print(months)
 
     dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
@@ -606,7 +607,7 @@ def responseTimePerAgentByMonth(amount):
         dates.insert(0, dates[0] - relativedelta(months=1)) # subtract 1 month from the first element and insert it before the beginning
 
     for month in dates: # go through all our dates and convert them to the month strings for final plotting
-        months.append(month.strftime('%m/%-y')) # format the dates as mm/yy
+        months.append(month.strftime('%m/%y')) # format the dates as mm/yy
     print(months) # debug
 
     dates.append(today) # now that we have used the dates to get the months, we want to append a final date of today for our query use
