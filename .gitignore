@@ -1,3 +1,4 @@
 **/*.png
 **/*.pdf
 oauth2_creds.json
+ticketLog.txt
