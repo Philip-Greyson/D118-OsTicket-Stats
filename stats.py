@@ -71,9 +71,21 @@ def ticketsPerAgent(days):
                             closedByName[index] += 1
                     elif status == 'Open':
                             openByName[index] += 1
-                    elif status == 'Waiting on User':
+                    elif status == 'Waiting on User' or status == 'Waiting on 3rd Party':
                             waitingByName[index] += 1
                     # print(entry)
+
+            # check to see if we have a very low value based on number of days to reduce clutter on graph
+            for index, count in enumerate(openedByName):
+                if count <= (.01 * days): # if the number of tickets is less than 1% of the days (1 tickets per 100 days)
+                    print(f'Removing ' + names[index] + ' from the list due to very low total ticket count')
+                    names.pop(index)
+                    openedByName.pop(index)
+                    openByName.pop(index)
+                    closedByName.pop(index)
+                    waitingByName.pop(index)
+
+
             print(f'INFO: Names of agents: {names}')
             print(f'INFO: Names of agents: {names}', file=log)
             print(f'INFO: # of opened ticket by agent: {openedByName}')
@@ -889,6 +901,7 @@ if __name__ == '__main__':
         try:   
             ticketsPerAgent(14) # call the tickets per agent for the last 2 weeks
             ticketsPerAgent(60) # do the last 2 months
+            ticketsPerAgent(270) # do the last 9 months
         except Exception as er:
             print(f'ERROR during tickets per agent: {er}')
 
