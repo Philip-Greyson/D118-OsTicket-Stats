@@ -19,6 +19,22 @@ import glob # needed to get lists of files
 import sys
 import img2pdf # needed to save pngs as output pdf
 import yagmail # needed to send email
+# import google API libraries
+import google.auth
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+# libraries needed for emailing
+import base64
+import mimetypes
+from email.message import EmailMessage
+from email.mime.audio import MIMEAudio
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email.mime.text import MIMEText
+
 
 #set up database login info, stored as environment variables on system
 un= os.environ.get('OSTICKET_USERNAME')
@@ -28,6 +44,30 @@ db = os.environ.get('OSTICKET_DB')
 
 emailFrom = os.environ.get('EMAIL_SENDER')
 emailTo = os.environ.get('EMAIL_RECEIVER')
+
+# Google API Scopes that will be used. If modifying these scopes, delete the file token.json.
+SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
+
+# Get credentials from json file, ask for permissions on scope or use existing token.json approval, then build the "service" connection to Google API
+creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+if os.path.exists('token.json'):
+    creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+# If there are no (valid) credentials available, let the user log in.
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+        creds = flow.run_local_server(port=0)
+    # Save the credentials for the next run
+    with open('token.json', 'w') as token:
+        token.write(creds.to_json())
+
+service = build('gmail', 'v1', credentials=creds)
+
 
 print("Username: " + str(un) + " |Password: " + str(pw) + " |Server: " + str(host) + " |Database: " + str(db)) #debug so we can see where mariadb is trying to connect to/with
 
@@ -880,7 +920,7 @@ def topicPieBreakdownByDays(amount):
     print(f'ACTION: Creating graph in "Graphs/Tickets by Topic Breakdown For Last {amount} days Pie.png"', file=log)
     plt.savefig(f'Graphs/Tickets by Topic Breakdown For Last {amount} days Pie.png') # save to .png file with the amount written
     plt.close()
-            
+
 # ---- Main execution of program -----
 if __name__ == '__main__':
     with open('ticketLog.txt', 'w') as log:
@@ -981,8 +1021,44 @@ if __name__ == '__main__':
         with open(outputfile,"wb") as f: # open our output file, take todays date as ISO-8601 for sorting purposes
             f.write(img2pdf.convert(imgs)) # write the actual file
 
-        t.sleep(2) # wait for file to finish saving fully
-        # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
-        print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
-        with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
-            yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
+        # old method of sending email via yagmail
+        # t.sleep(2) # wait for file to finish saving fully
+        # # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
+        # print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
+        # with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
+        #     yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
+
+        # send pdf file in email, via Google API
+        try:
+            mime_message = EmailMessage() # create a email message object
+
+            # headers
+            mime_message['To'] = emailTo # the email address it is sent to
+            mime_message['From'] = emailFrom # this doesnt seem to do anything, it will always send from the email that is used for authentication
+            mime_message['Subject'] = 'Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d') # subject line of the email, change to your liking
+
+            mime_message.set_content('Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil') # the body of the email, aka the text
+
+            # attachment
+            attachment_filename = outputfile # tell the email what file we are attaching
+            # guessing the MIME type
+            type_subtype, _ = mimetypes.guess_type(attachment_filename)
+            maintype, subtype = type_subtype.split('/')
+
+            with open(attachment_filename, 'rb') as fp:
+                attachment_data = fp.read() # read the file data in and store it in the attachment_data
+            mime_message.add_attachment(attachment_data, maintype, subtype, filename=outputfile) # add the attacment data to the message object, give it a filename that was our pdf file name
+
+            # encoded message
+            encoded_message = base64.urlsafe_b64encode(mime_message.as_bytes()).decode()
+
+            create_message = {
+                'raw': encoded_message
+            }
+
+            send_message = (service.users().messages().send(userId="me", body=create_message).execute())
+            print(f'Email sent, message ID: {send_message["id"]}') # print out resulting message Id
+
+        except HttpError as error:
+            print(f'An error occurred during email sending: {error}')
+            print(f'An error occurred during email sending: {error}', file=log)

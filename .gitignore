@@ -2,3 +2,6 @@
 **/*.pdf
 oauth2_creds.json
 ticketLog.txt
+credentials.json
+stats.py
+token.json
