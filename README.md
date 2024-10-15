@@ -32,16 +32,18 @@ If you have questions, suggestions, or would like my assistance as a consultant 
   - The database name, username and password will need to be stored as 'OSTICKET_DB', 'OSTICKET_USERNAME', and 'OSTICKET_PASSWORD' respectively
 - Have an overall directory/folder with the script inside it. Also needed inside that outer directory:
   - Directory/Folder named 'Graphs' for the output files to be placed in.
-  - an oauth2_creds.json file that holds the Google client ID and secret for a Google API project. This is needed to send the email at the end
-- Python (create and tested on Python 3.10.6) installed on the machine that is running the script - [Download](https://www.python.org/downloads/release/python-3106/)
-- A number of Python librarie/packages:
+  - a credentials.json file that holds the Google client ID and secret for a Google API project. This is needed to send the email at the end
+- Python (create and tested on Python 3.10.6 and known working on 3.11.1) installed on the machine that is running the script - [Download](https://www.python.org/downloads/release/python-3106/)
+- A Gmail account that you wish to send emails from.
+- The sender and recipient emails need to be stored as the environment variables 'EMAIL_SENDER' and 'EMAIL_RECEIVER' respectively
+- **A number of Python libraries/packages:**
+  - The Google API Python Client - Interfaces with Google to send email through Gmail account: [Info Link](https://googleapis.github.io/google-api-python-client/docs/start.html) - [Install Instructions](https://github.com/googleapis/google-api-python-client#installation)
+    - This is what needs the credentials.json file is needed for, see the "Setup" section in the info link above to learn how to create a Google API Console project and generate the credentials file.
   - MariaDB Connector/Python - actually does the database connection and queries: [Info Link](https://mariadb.com/resources/blog/how-to-connect-python-programs-to-mariadb/) - `pip3 install mariadb`
     - Also need to install the MariaDB database development files on the computer for the connector to work
       - Ubuntu can use `apt install libmariadb-dev`
-      - Windows TBA
+      - Windows should just work after library installation (at least it has for me)
   - NumPy - has a few useful math functions: [Info Link](https://numpy.org/install/) - `pip install numpy`
   - Matplotlib - Creates the graphs/plots: [Info Link](https://matplotlib.org/) - `pip install matplotlib`
   - Img2pdf - Creates the output .pdf from individual pictures: [Info Link](https://pypi.org/project/img2pdf/) - `pip3 install img2pdf`
-  - Yagmail - Sends the pdf in an email: [Info Link](https://pypi.org/project/yagmail/) - `pip3 install yagmail[all]`
-    - This is what requires the oauth2_creds.json file is needed for. See <https://github.com/kootenpv/yagmail#oauth2> and [this](https://blog.macuyiko.com/post/2016/how-to-send-html-mails-with-oauth2-and-gmail-in-python.html) for instructions on setting up the Goole API project and credentials
-    - The sender and recipient emails need to be stored as the environment variables 'EMAIL_SENDER' and 'EMAIL_RECEIVER' respectively
+  - ~~Yagmail - Sends the pdf in an email: [Info Link](https://pypi.org/project/yagmail/) - `pip3 install yagmail[all]`~~
