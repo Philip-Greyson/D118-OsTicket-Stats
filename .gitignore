@@ -5,3 +5,5 @@ ticketLog.txt
 credentials.json
 stats.py
 token.json
+rawTickets*
+ruff.toml

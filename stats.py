@@ -921,6 +921,26 @@ def topicPieBreakdownByDays(amount):
     plt.savefig(f'Graphs/Tickets by Topic Breakdown For Last {amount} days Pie.png') # save to .png file with the amount written
     plt.close()
 
+def outputRawTicketCSV() -> str:
+    """Function to do a simple dump of all tickets to a .csv file in case extra/different analysis is wanted."""
+    print('-----------------Starting raw output of tickets to .csv file------------------')
+    print('-----------------Starting raw output of tickets to .csv file------------------',file=log)
+    date = datetime.now().strftime('%Y-%m-%d')
+    outputFileName=f'rawTickets-{date}.csv'
+    with open(outputFileName, 'w', encoding='utf-8') as output:
+        print('"TicketNum","FirstName","LastName","Status","Topic","Subject","Overdue","DateOpened","DateLastUpdated","DateClosed"', file=output)  # print out the header row
+        # Connect to the database
+        with mariadb.connect(user=un, password=pw, host=host, port=3306, database=db) as con:
+            with con.cursor() as cur:  # start an entry cursor
+                cur.execute('SELECT ost_ticket.number, ost_staff.firstname, ost_staff.lastname, ost_ticket_status.name, ost_help_topic.topic, ost_ticket__cdata.subject, ost_ticket.isoverdue, ost_ticket.created, ost_ticket.lastupdate, ost_ticket.closed FROM ost_ticket LEFT JOIN ost_staff ON ost_ticket.staff_id=ost_staff.staff_id LEFT JOIN ost_ticket_status ON ost_ticket.status_id=ost_ticket_status.id LEFT JOIN ost_help_topic ON ost_ticket.topic_id=ost_help_topic.topic_id LEFT JOIN ost_ticket__cdata ON ost_ticket.ticket_id=ost_ticket__cdata.ticket_id')
+                for (number, firstName, lastName, status, topic, subject, overdue, created, updated, closed) in cur:
+                    try:
+                        print(f'{number},{firstName},{lastName},{status},{topic},"{subject}",{overdue},{created},{updated},{closed}', file=output)
+                    except Exception as er:
+                        print(f'ERROR while printing out raw ticket info for ticket {number}: {er}')
+                        print(f'ERROR while printing out raw ticket info for ticket {number}: {er}', file=log)
+    return outputFileName
+
 # ---- Main execution of program -----
 if __name__ == '__main__':
     with open('ticketLog.txt', 'w') as log:
@@ -1004,7 +1024,10 @@ if __name__ == '__main__':
         except Exception as er:
             print(f'ERROR during topic breakdown: {er}')
 
-        
+        try:
+            rawTicketFile = outputRawTicketCSV()
+        except Exception as er:
+            print(f'ERROR while printing out raw ticket .csv: {er}')
 
         # convert all files ending in .png inside a directory.  https://pypi.org/project/img2pdf/
         dirname = "Graphs/" # our folder we have each graph in
@@ -1021,12 +1044,6 @@ if __name__ == '__main__':
         with open(outputfile,"wb") as f: # open our output file, take todays date as ISO-8601 for sorting purposes
             f.write(img2pdf.convert(imgs)) # write the actual file
 
-        # old method of sending email via yagmail
-        # t.sleep(2) # wait for file to finish saving fully
-        # # send the email with the pdf. need to have the credential files saved as oauth2_creds.json
-        # print('Sending ' + outputfile + ' by email from ' + emailFrom + ' to ' + emailTo)
-        # with yagmail.SMTP(emailFrom, oauth2_file="oauth2_creds.json") as yag:
-        #     yag.send(to = emailTo, subject='Ticket Graphs for ' + datetime.now().strftime('%Y-%m-%d'), contents='Here are the graphs generated from ticket stats. If you have questions, suggestions or comments please contact Phil', attachments=outputfile)
 
         # send pdf file in email, via Google API
         try:
@@ -1048,6 +1065,16 @@ if __name__ == '__main__':
             with open(attachment_filename, 'rb') as fp:
                 attachment_data = fp.read() # read the file data in and store it in the attachment_data
             mime_message.add_attachment(attachment_data, maintype, subtype, filename=outputfile) # add the attacment data to the message object, give it a filename that was our pdf file name
+
+            # add second attachment of "raw" ticket .csv output
+            attachment_filename = rawTicketFile
+            # guessing the MIME type
+            type_subtype, _ = mimetypes.guess_type(attachment_filename)
+            maintype, subtype = type_subtype.split('/')
+
+            with open(attachment_filename, 'rb') as fp:
+                attachment_data = fp.read() # read the file data in and store it in the attachment_data
+            mime_message.add_attachment(attachment_data, maintype, subtype, filename=rawTicketFile) # add the attacment data to the message object, give it a filename that was our pdf file name
 
             # encoded message
             encoded_message = base64.urlsafe_b64encode(mime_message.as_bytes()).decode()
