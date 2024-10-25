@@ -1102,8 +1102,8 @@ if __name__ == '__main__':
                 'raw': encoded_message
             }
 
-            # send_message = (service.users().messages().send(userId="me", body=create_message).execute())
-            # print(f'Email sent, message ID: {send_message["id"]}') # print out resulting message Id
+            send_message = (service.users().messages().send(userId="me", body=create_message).execute())
+            print(f'Email sent, message ID: {send_message["id"]}') # print out resulting message Id
 
         except HttpError as error:
             print(f'An error occurred during email sending: {error}')
