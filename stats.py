@@ -16,9 +16,7 @@ from dateutil.relativedelta import * # neeeded to do addition/subtraction of mon
 from itertools import cycle # needed to cycle through a list one at a time, looping
 import os  # needed to get environement variables, files, etc
 import glob # needed to get lists of files
-import sys
 import img2pdf # needed to save pngs as output pdf
-import yagmail # needed to send email
 # import google API libraries
 import google.auth
 from google.auth.transport.requests import Request
@@ -459,7 +457,7 @@ def closeTimePerAgentByDays(amount):
     # plt.show()
     plt.close()
 
-def individualCloseTimesPerMonth(amount):
+def individualCloseTimesPerMonth(amount, ignore_admins):
     print(f'--------------Starting average close time for each agent for the last {amount} months-----------------')
     print(f'--------------Starting average close time for each agent for the last {amount} months-----------------', file=log)
     #get list of agents
@@ -493,7 +491,7 @@ def individualCloseTimesPerMonth(amount):
         with con.cursor() as cur:  # start an entry cursor
             cur.execute('SELECT staff_id, firstname FROM ost_staff WHERE isactive = 1') # just get all staff_id for active agents, store them in another list
             for agent in cur:
-                if not agent[0] in agents: # if they dont exist in the dict then we want to add them to it
+                if agent[0] not in agents: # if they dont exist in the dict then we want to add them to it
                     agents[str(agent[0])] = str(agent[1]) # append the id, name pair to the agent dictionary
             for ID in agents.copy(): # go through the keys (ids) in a copy of the agents dict, so we can make changes to the original one at the same time
                 cur.execute('SELECT ticket_id FROM ost_ticket WHERE staff_id = ' + ID)
@@ -532,14 +530,18 @@ def individualCloseTimesPerMonth(amount):
 
                         # Now do basically the same but for the overall district if we dont already have the data so we dont have to run the same query over and over
                         if  i not in range(len(totalAvgCloseTimeDeltas)):
-                            cur.execute("SELECT created, closed FROM ost_ticket WHERE created >= '" + dates[i].strftime('%Y%m%d') + "' AND created < '" + dates[i+1].strftime('%Y%m%d') + "'")
+                            cur.execute("SELECT ost_ticket.created, ost_ticket.closed, ost_ticket.staff_id, ost_staff.isadmin FROM ost_ticket LEFT JOIN ost_staff ON ost_ticket.staff_id = ost_staff.staff_id WHERE ost_ticket.created >= '" + dates[i].strftime('%Y%m%d') + "' AND ost_ticket.created < '" + dates[i+1].strftime('%Y%m%d') + "'")
                             totalResults = cur.fetchall() # do a fetchall and store the output in results so we can see how many we have
                             if totalResults: # need to make sure there is at least one ticket to do the math on or we get errors
                                 for entry in totalResults:
-                                    # print(entry)
+                                    # print(entry)  # debug
+                                    isAdmin = True if entry[3] == 1 else False
                                     if entry[1]: # if there is a close time
-                                        closeTimeDelta = entry[1] - entry[0]
-                                        totalMonthlyCloseDeltas.append(closeTimeDelta)
+                                        if not ignore_admins or not isAdmin:  # if we want to ignore admins, it needs to not be a ticket that was assigned to an administrator
+                                            closeTimeDelta = entry[1] - entry[0]
+                                            totalMonthlyCloseDeltas.append(closeTimeDelta)
+                                        else:
+                                            print(f'DBUG: Ignoring ticket assigned to staff id {entry[2]} because they are an admin')
                                 avgMonthlyCloseTime = sum(totalMonthlyCloseDeltas, timedelta(0)) / len(totalMonthlyCloseDeltas) # get the average by adding up all the time deltas and dividing by instances
                             else:
                                 print(f'WARNING: Ignoring month {i+1} due to overall district low ticket count')
@@ -582,7 +584,10 @@ def individualCloseTimesPerMonth(amount):
                     plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
                     plt.title('Average Close Time for ' + agents[ID] + ' in the last ' + str(amount) + ' Months')
                     plt.plot(months, agentAvgCloseTimeHours, 'bo', linewidth=.5, linestyle='--', label=agents[ID]+' Close Time')
-                    plt.plot(months, totalAvgCloseTimeHours, 'gx', label="District Average")
+                    if ignore_admins:
+                        plt.plot(months, totalAvgCloseTimeHours, 'gx', label="District Average Ignoring Admins")
+                    else:
+                        plt.plot(months, totalAvgCloseTimeHours, 'gx', label="District Average")
                     # Label the points https://queirozf.com/entries/add-labels-and-text-to-matplotlib-plots-annotation-examples
                     for x,y in zip(months, agentAvgCloseTimeHours):
                         if not np.isnan(y):
@@ -593,16 +598,24 @@ def individualCloseTimesPerMonth(amount):
                     plt.xlabel('Month')
                     plt.grid(True)
                     plt.legend() # show the legend
-                    print(f'ACTION: Creating graph in "Graphs/{ID}-{agents[ID]}CloseTimePerMonth.png"')
-                    print(f'ACTION: Creating graph in "Graphs/{ID}-{agents[ID]}CloseTimePerMonth.png"', file=log)
-                    plt.savefig(f'Graphs/{ID}-{agents[ID]}CloseTimePerMonth.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
+                    if ignore_admins:
+                        print(f'ACTION: Creating graph in "Graphs/{ID}-{agents[ID]}CloseTimePerMonth-NoAdmins.png"')
+                        print(f'ACTION: Creating graph in "Graphs/{ID}-{agents[ID]}CloseTimePerMonth-NoAdmins.png"', file=log)
+                        plt.savefig(f'Graphs/{ID}-{agents[ID]}CloseTimePerMonth-NoAdmins.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
+                    else:
+                        print(f'ACTION: Creating graph in "Graphs/{ID}-{agents[ID]}CloseTimePerMonth.png"')
+                        print(f'ACTION: Creating graph in "Graphs/{ID}-{agents[ID]}CloseTimePerMonth.png"', file=log)
+                        plt.savefig(f'Graphs/{ID}-{agents[ID]}CloseTimePerMonth.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
                     # plt.show()
                     plt.close()
 
             # do one last plot with just the district average close time
             plt.figure(figsize=(8.5,5), dpi=200) # set the size of the figure before we plot anything to it or it will not work
             plt.title('Average Close Time for All Users in the last ' + str(amount) + ' Months')
-            plt.plot(months, totalAvgCloseTimeHours, 'go', linewidth=.5, linestyle='--', label="District Average")
+            if ignore_admins:
+                plt.plot(months, totalAvgCloseTimeHours, 'go', linewidth=.5, linestyle='--', label="District Average Ignoring Admins")
+            else:
+                plt.plot(months, totalAvgCloseTimeHours, 'go', linewidth=.5, linestyle='--', label="District Average")
             # Label the points https://queirozf.com/entries/add-labels-and-text-to-matplotlib-plots-annotation-examples
             for x,y in zip(months, totalAvgCloseTimeHours):
                 if not np.isnan(y):
@@ -613,9 +626,14 @@ def individualCloseTimesPerMonth(amount):
             plt.xlabel('Month')
             plt.grid(True)
             plt.legend() # show the legend
-            print(f'ACTION: Creating graph in "Graphs/TotalAvgCloseTimePerMonth-{amount}.png"')
-            print(f'ACTION: Creating graph in "Graphs/TotalAvgCloseTimePerMonth-{amount}.png"', file=log)
-            plt.savefig(f'Graphs/TotalAvgCloseTimePerMonth-{amount}.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
+            if ignore_admins:
+                print(f'ACTION: Creating graph in "Graphs/TotalAvgCloseTimePerMonth-{amount}-NoAdmins.png"')
+                print(f'ACTION: Creating graph in "Graphs/TotalAvgCloseTimePerMonth-{amount}-NoAdmins.png"', file=log)
+                plt.savefig(f'Graphs/TotalAvgCloseTimePerMonth-{amount}-NoAdmins.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
+            else:
+                print(f'ACTION: Creating graph in "Graphs/TotalAvgCloseTimePerMonth-{amount}.png"')
+                print(f'ACTION: Creating graph in "Graphs/TotalAvgCloseTimePerMonth-{amount}.png"', file=log)
+                plt.savefig(f'Graphs/TotalAvgCloseTimePerMonth-{amount}.png') # save each graph to the Graphs subfolder named with the agent name and leading ID number
             # plt.show()
             plt.close()
 
@@ -983,7 +1001,8 @@ if __name__ == '__main__':
             print(f'ERROR during close time per agent by days: {er}')
 
         try:
-            individualCloseTimesPerMonth(12) # get individual close times for each agent in the last 12 months
+            individualCloseTimesPerMonth(12, False) # get individual close times for each agent in the last 12 months
+            individualCloseTimesPerMonth(12, True) # get individual close times for each agent in the last 12 months
         except Exception as er:
             print(f'ERROR during agents close time per month: {er}')
         try:
@@ -1083,8 +1102,8 @@ if __name__ == '__main__':
                 'raw': encoded_message
             }
 
-            send_message = (service.users().messages().send(userId="me", body=create_message).execute())
-            print(f'Email sent, message ID: {send_message["id"]}') # print out resulting message Id
+            # send_message = (service.users().messages().send(userId="me", body=create_message).execute())
+            # print(f'Email sent, message ID: {send_message["id"]}') # print out resulting message Id
 
         except HttpError as error:
             print(f'An error occurred during email sending: {error}')
